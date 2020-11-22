@@ -2,11 +2,14 @@
 // digimorse-arduino-keyer, an Arduino Nano-based Morse key/paddle <-> USB Serial interface and simple keyer
 // for use in the digimorse project.
 //
+// Libraries required:
+// TimerOne
+//
 // (C) 2020 Matt Gumbley M0CUV
 //
 
 #include <Arduino.h> 
-//#include <TimerOne.h>
+#include <TimerOne.h>
 #include "SCoop.h"
 
 // INPUTS ON PINS --------------------------------------------------------------------------------------------------------------
@@ -38,44 +41,33 @@ const int sidetoneOut = 5;  // PWM, with RC low-pass filter network to convert
                             // to analogue. On OCR3A, PWM phase correct.
 
 
-inline uint16_t readPins() {
-    return (PIND & 0xC0);
-}
-
-// input change detection, called in loop() for test harness, or in ISR
-volatile uint16_t oldPins;
-volatile uint16_t newPins;
-volatile uint16_t initialPins;
 
 // EVENT MANAGEMENT ------------------------------------------------------------------------------------------------------------
 
 // We have several events that we can react to....
-enum Event {
-  NONE,
-  PADA_RELEASE, PADA_PRESS,
-  PADB_RELEASE, PADB_PRESS
-};
+const uint16_t PADA_RELEASE = 0;
+const uint16_t PADA_PRESS = 1;
+const uint16_t PADB_RELEASE = 2;
+const uint16_t PADB_PRESS = 3;
 
 // Events detected by the interrupt handler are enqueued on this FIFO queue, 
 // which is read by processNextEvent (in non-interrupt time).
-defineFifo(eventFifo, Event, 100)
+defineFifo(eventFifo, uint16_t, 100)
 
 // Enqueue an event on the FIFO queue.
 static char zut[20];
-inline void eventOccurred(Event eventCode) {
+void eventOccurred(const uint16_t eventCode) {
 #ifdef DEBUGEVENT
-    sprintf(zut, ">ev:0x%04X", eventCode);
+    sprintf(zut, ">ev:0x%02X", eventCode);
     Serial.println(zut);
 #endif    
-    if (!eventFifo.put(&eventCode)) {
+    if (!eventFifo.putInt(eventCode)) {
         Serial.println("FIFO overrun");
     }
 }
 
-void processEvent(const Event e) {
+void processEvent(const uint16_t e) {
   switch(e) {
-    case NONE:
-      break;
     case PADA_RELEASE:
       Serial.print("A");
       break;
@@ -87,17 +79,16 @@ void processEvent(const Event e) {
       break;
     case PADB_PRESS:
       Serial.print("b");
-      break;
-    
+      break;    
   }
 }
 
 void processNextEvent() {
   // If there any events on the FIFO queue that were pushed by the ISR, process them here in the main non-interrupt loop.
-  Event event;
+  uint16_t event;
   if (eventFifo.get(&event)) {
     //char buf[80];
-    //sprintf(buf, "Got an event 0x%04x in processNextEvent", event);
+    //sprintf(buf, "Got an event 0x%02x in processNextEvent", event);
     //Serial.println(buf);
     processEvent(event);
   }
@@ -105,6 +96,15 @@ void processNextEvent() {
 
 
 // INTERRUPT CONTROL -----------------------------------------------------------------------------------------------------------
+
+inline uint16_t readPins() {
+    return (PIND & 0xC0);
+}
+
+// input change detection, called in loop() for test harness, or in ISR
+volatile uint16_t oldPins;
+volatile uint16_t newPins;
+volatile uint16_t initialPins;
 
 void tobin(char *buf, int x) {
   buf[0] = ((x & 0x80) == 0x80) ? '1' : '0';
@@ -129,11 +129,11 @@ void interruptHandler(void) {
   }
 #endif
   uint16_t newPin = newPins & padAInBit;
-  if (newPin != oldPins & padAInBit) {
+  if (newPin != (oldPins & padAInBit)) {
     eventOccurred(newPin == 0 ? PADA_RELEASE : PADA_PRESS);
   }
   newPin = newPins & padBInBit;
-  if (newPin != oldPins & padBInBit) {
+  if (newPin != (oldPins & padBInBit)) {
     eventOccurred(newPin == 0 ? PADB_RELEASE : PADB_PRESS);
   }
   
@@ -163,3 +163,4 @@ void loop() {
   // Put your main code here, to run repeatedly.
   processNextEvent();
 }
+
