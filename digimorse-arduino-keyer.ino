@@ -6,7 +6,7 @@
 //
 
 #include <Arduino.h> 
-#include <TimerOne.h>
+//#include <TimerOne.h>
 #include "SCoop.h"
 
 // INPUTS ON PINS --------------------------------------------------------------------------------------------------------------
@@ -34,6 +34,9 @@ const int ledDin = 11; // "MISO"
 // probably avoid 12 MOSI
 const int ledClk = 13; // "SCK"
 // TODO will need an analogue output via an RC filter to a small amp and speaker, for sidetone generation.
+const int sidetoneOut = 5;  // PWM, with RC low-pass filter network to convert
+                            // to analogue. On OCR3A, PWM phase correct.
+
 
 inline uint16_t readPins() {
     return (PIND & 0xC0);
@@ -152,7 +155,7 @@ void initialise() {
 
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(115200); // TODO higher? is it possible?
 }
 
 
