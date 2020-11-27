@@ -14,10 +14,10 @@
 
 // INPUTS ON PINS --------------------------------------------------------------------------------------------------------------
                            //      76543210
-const int padBIn = 6;      // PIND  x    --
-const int padBInBit = 0x40;
-const int padAIn = 7;      // PIND x     --
-const int padAInBit = 0x80;
+const int padBIn = 4;      // PIND    x  -- paddle
+const int padBInBit = 0x10;
+const int padAIn = 5;      // PIND   x   -- straight key
+const int padAInBit = 0x20;
 
 // Port Manipulation
 //    B (digital pin 8 to 13)
@@ -32,10 +32,8 @@ const int padAInBit = 0x80;
 
 // OUTPUTS ON PINS -------------------------------------------------------------------------------------------------------------
 
-const int ledCs = 10; // a.k.a. "LOAD" or "SS"
-const int ledDin = 11; // "MISO"
-// probably avoid 12 MOSI
-const int ledClk = 13; // "SCK"
+const int ledOut = 13;
+
 // TODO will need an analogue output via an RC filter to a small amp and speaker, for sidetone generation.
 const int sidetoneOut = 5;  // PWM, with RC low-pass filter network to convert
                             // to analogue. On OCR3A, PWM phase correct.
@@ -83,13 +81,16 @@ void processEvent(const uint16_t e) {
   }
 }
 
+// #define DEBUGEVENT
 void processNextEvent() {
   // If there any events on the FIFO queue that were pushed by the ISR, process them here in the main non-interrupt loop.
   uint16_t event;
   if (eventFifo.get(&event)) {
-    //char buf[80];
-    //sprintf(buf, "Got an event 0x%02x in processNextEvent", event);
-    //Serial.println(buf);
+#ifdef DEBUGEVENT
+    char buf[80];
+    sprintf(buf, "Got an event 0x%02x in processNextEvent", event);
+    Serial.println(buf);
+#endif
     processEvent(event);
   }
 }
@@ -98,7 +99,7 @@ void processNextEvent() {
 // INTERRUPT CONTROL -----------------------------------------------------------------------------------------------------------
 
 inline uint16_t readPins() {
-    return (PIND & 0xC0);
+    return PIND & 0xFC;
 }
 
 // input change detection, called in loop() for test harness, or in ISR
@@ -118,33 +119,51 @@ void tobin(char *buf, int x) {
   buf[8] = '\0';
 }
 
+// #define DEBUGPINS 
+int ledState = LOW;
+void toggleLED() {
+  digitalWrite(ledOut, ledState);
+  ledState = !ledState;
+}
+
 void interruptHandler(void) {
   // Process any pin state transitions...
   newPins = readPins();
 #ifdef DEBUGPINS
   if (newPins != oldPins) {
+    
     char out[10];
     tobin(out, newPins);
     Serial.println(out);
   }
 #endif
+  // newPin high? That's a release since there are pull-up resistors.
   uint16_t newPin = newPins & padAInBit;
   if (newPin != (oldPins & padAInBit)) {
-    eventOccurred(newPin == 0 ? PADA_RELEASE : PADA_PRESS);
+    eventOccurred(newPin == padAInBit ? PADA_RELEASE : PADA_PRESS);
   }
   newPin = newPins & padBInBit;
   if (newPin != (oldPins & padBInBit)) {
-    eventOccurred(newPin == 0 ? PADB_RELEASE : PADB_PRESS);
+    eventOccurred(newPin == padBInBit ? PADB_RELEASE : PADB_PRESS);
   }
   
   oldPins = newPins;
 }
 
 // Initialise all hardware, interrupt handler.
-void initialise() {
+void setup() {
+  Serial.begin(115200); // TODO higher? is it possible?
+  Serial.println("# DigiMorse Arduino Keyer");
+  Serial.println("# (C) 2020 Matt Gumbley M0CUV");
   // The buttons...
+  for (int p=0; p<8; p++) {
+    pinMode(p, INPUT_PULLUP);
+  }
   pinMode(padAIn, INPUT_PULLUP);
   pinMode(padBIn, INPUT_PULLUP);
+  
+  pinMode(ledOut, OUTPUT);
+  digitalWrite(13, LOW);
   
   initialPins = oldPins = newPins = readPins();
 
@@ -152,12 +171,6 @@ void initialise() {
   Timer1.initialize(20000); // Every 1/200th of a second (interrupt every 5 milliseconds).
   Timer1.attachInterrupt(interruptHandler);
 }
-
-
-void setup() {
-  Serial.begin(115200); // TODO higher? is it possible?
-}
-
 
 void loop() {
   // Put your main code here, to run repeatedly.
