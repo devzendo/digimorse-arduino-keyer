@@ -137,9 +137,10 @@ void toggleLED() {
 // then an event is queued to cause the command to be processed. Only
 // build up when an event is not being processed (wait until the commandBusy
 // flag is false - it's set true when a command event has been queued.)
+// #define DEBUGCOMMAND
 const int MAX_COMMAND_LEN = 80;
 volatile int commandLen = 0;
-volatile char commandBuffer[MAX_COMMAND_LEN];
+/* volatile (locks up compiler!) */ char commandBuffer[MAX_COMMAND_LEN];
 volatile bool commandBusy = false;
 
 void resetCommandBuilder() {
@@ -152,14 +153,71 @@ void enqueueCommand() {
   eventOccurred(COMMAND_TO_PROCESS);
 }
 
-// A command from the user has been received in the command buffer.
-void processCommand() {
-  Serial.println("Processing command");
-  commandBuffer[commandLen] = '\0';
-  Serial.println(commandBuffer);
+void resetToDefaults() {
 }
 
-char out[10];
+char out[40];
+
+// A command from the user has been received in the command buffer.
+void processCommand() {
+#ifdef DEBUGCOMMAND
+  Serial.println("# Processing command");
+  Serial.println(commandBuffer);
+#endif
+  if (commandLen == 0) {
+    return;
+  }
+  out[0] = '>';
+  out[1] = ' ';
+  out[2] = 'O';
+  out[3] = 'K';
+  out[4] = '\0';
+  // To be continued...
+  switch (commandBuffer[0]) {
+    case '?':
+      Serial.println("> V: Display version info");
+      Serial.println("> K: MODE = keyer mode");
+      Serial.println("> S: MODE = straight key mode *");
+      Serial.println("> Q: Display settings");
+      Serial.println("> W[5-40]: Set keyer speed between 5 and 40 WPM (*12)");
+      Serial.println("> R: POLARITY = reverse paddle polarity");
+      Serial.println("> N: POLARITY = normal paddle polarity *");
+      Serial.println("> T: OUTPUT = timing output");
+      Serial.println("> P: OUTPUT = pulse output *");
+      Serial.println("> !RESET!: Reset to all defaults");
+      Serial.println("> (* indicates defaults)");
+      break;
+    case 'V':
+      strcpy(out + 2, "v0.0");
+      break;
+    case 'K':
+      break;
+    case 'S':
+      break;
+    case 'Q':
+      break;
+    case 'W': // collect speed
+      break;
+    case 'R':
+      break;
+    case 'N':
+      break;
+    case 'T':
+      break;
+    case 'P':
+      break;
+    default:
+      if (strcmp(commandBuffer, "!RESET!") ==0) {
+        resetToDefaults();
+      } else {
+        out[2] = '?';
+        out[3] = '\0';
+      }
+      break;
+  }
+  Serial.println(out);
+}
+
 void interruptHandler(void) {
   // Process any pin state transitions...
   newPins = readPins();
@@ -198,9 +256,12 @@ void interruptHandler(void) {
     commandLen = 0;
     return;
   }
+#ifdef DEBUGCOMMAND
   sprintf(out, "%02x", inByte & 0xff);
   Serial.println(out);
-  if (inByte =='\n') {
+#endif
+  if (inByte == '\n') {
+    commandBuffer[commandLen] = '\0';
     enqueueCommand(); // commandLen will be the number of bytes of the command text, without \n.
   } else {
     commandBuffer[commandLen++] = (char) inByte;
