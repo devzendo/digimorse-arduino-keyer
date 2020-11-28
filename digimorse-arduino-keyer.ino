@@ -28,7 +28,7 @@ const int padAInBit = 0x20;
 
 // PIND:
 // 7     6     5     4     3     2     -     -
-// PADA  PADB  
+//             PADA  PADB  
 
 // OUTPUTS ON PINS -------------------------------------------------------------------------------------------------------------
 
@@ -47,6 +47,7 @@ const uint16_t PADA_RELEASE = 0;
 const uint16_t PADA_PRESS = 1;
 const uint16_t PADB_RELEASE = 2;
 const uint16_t PADB_PRESS = 3;
+const uint16_t COMMAND_TO_PROCESS = 4;
 
 // Events detected by the interrupt handler are enqueued on this FIFO queue, 
 // which is read by processNextEvent (in non-interrupt time).
@@ -60,9 +61,11 @@ void eventOccurred(const uint16_t eventCode) {
     Serial.println(zut);
 #endif    
     if (!eventFifo.putInt(eventCode)) {
-        Serial.println("FIFO overrun");
+        Serial.println("# FIFO overrun");
     }
 }
+
+
 
 void processEvent(const uint16_t e) {
   switch(e) {
@@ -77,7 +80,11 @@ void processEvent(const uint16_t e) {
       break;
     case PADB_PRESS:
       Serial.print("b");
-      break;    
+      break;
+    case COMMAND_TO_PROCESS:
+      processCommand();
+      resetCommandBuilder();
+      break;
   }
 }
 
@@ -126,13 +133,39 @@ void toggleLED() {
   ledState = !ledState;
 }
 
+// Commands are read on interrupt and built up here until CR received,
+// then an event is queued to cause the command to be processed. Only
+// build up when an event is not being processed (wait until the commandBusy
+// flag is false - it's set true when a command event has been queued.)
+const int MAX_COMMAND_LEN = 80;
+volatile int commandLen = 0;
+volatile char commandBuffer[MAX_COMMAND_LEN];
+volatile bool commandBusy = false;
+
+void resetCommandBuilder() {
+  commandLen = 0;
+  commandBusy = false;
+}
+
+void enqueueCommand() {
+  commandBusy = true;
+  eventOccurred(COMMAND_TO_PROCESS);
+}
+
+// A command from the user has been received in the command buffer.
+void processCommand() {
+  Serial.println("Processing command");
+  commandBuffer[commandLen] = '\0';
+  Serial.println(commandBuffer);
+}
+
+char out[10];
 void interruptHandler(void) {
   // Process any pin state transitions...
   newPins = readPins();
 #ifdef DEBUGPINS
   if (newPins != oldPins) {
     
-    char out[10];
     tobin(out, newPins);
     Serial.println(out);
   }
@@ -148,6 +181,30 @@ void interruptHandler(void) {
   }
   
   oldPins = newPins;
+  
+  // Process any incoming command data...
+  if (commandBusy) {
+    return;
+  }
+  
+  int inByte = Serial.read();
+  if (inByte == -1) {
+    // No data...
+    return;
+  }
+  if (commandLen == MAX_COMMAND_LEN - 1) {
+    Serial.println("# Command buffer full");
+    // Ditch the 'command', this shouldn't happen, it's presumably bogus.
+    commandLen = 0;
+    return;
+  }
+  sprintf(out, "%02x", inByte & 0xff);
+  Serial.println(out);
+  if (inByte =='\n') {
+    enqueueCommand(); // commandLen will be the number of bytes of the command text, without \n.
+  } else {
+    commandBuffer[commandLen++] = (char) inByte;
+  }
 }
 
 // Initialise all hardware, interrupt handler.
@@ -155,10 +212,12 @@ void setup() {
   Serial.begin(115200); // TODO higher? is it possible?
   Serial.println("# DigiMorse Arduino Keyer");
   Serial.println("# (C) 2020 Matt Gumbley M0CUV");
-  // The buttons...
+
+  // The buttons... let's not have anything on PIND floating.
   for (int p=0; p<8; p++) {
     pinMode(p, INPUT_PULLUP);
   }
+  // The paddle inputs, specifically..
   pinMode(padAIn, INPUT_PULLUP);
   pinMode(padBIn, INPUT_PULLUP);
   
@@ -167,6 +226,8 @@ void setup() {
   
   initialPins = oldPins = newPins = readPins();
 
+  resetCommandBuilder();
+  
   // Interrupt handler
   Timer1.initialize(20000); // Every 1/200th of a second (interrupt every 5 milliseconds).
   Timer1.attachInterrupt(interruptHandler);
