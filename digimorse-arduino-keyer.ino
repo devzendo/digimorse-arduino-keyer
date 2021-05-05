@@ -102,8 +102,68 @@ void processNextEvent() {
   }
 }
 
-
 // INTERRUPT CONTROL -----------------------------------------------------------------------------------------------------------
+
+const uint16_t interruptPeriodMs = 2;
+
+// DEBOUNCE CONTROL ------------------------------------------------------------------------------------------------------------
+#define DEBOUNCE
+
+#ifdef DEBOUNCE
+
+// Debounce logic based on code by Jack Ganssle.
+const uint8_t checkMsec = interruptPeriodMs;     // Read hardware every so many milliseconds
+const uint8_t pressMsec = 10;     // Stable time before registering pressed
+const uint8_t releaseMsec = 20;   // Stable time before registering released
+
+class Debouncer {
+public:
+    Debouncer() {
+        debouncedKeyPress = true; // If using internal pullups, the initial state is true.
+    }
+    // called every checkMsec.
+    // The key state is +5v=released, 0v=pressed; there are pullup resistors.
+    void debounce(bool rawPinState) {
+        keyChanged = false;
+        keyReleased = debouncedKeyPress;
+        if (rawPinState == debouncedKeyPress) {
+            // Set the timer which allows a change from current state
+            resetTimer();
+        } else {
+            if (--count == 0) {
+                // key has changed - wait for new state to become stable
+                debouncedKeyPress = rawPinState;
+                keyChanged = true;
+                keyReleased = debouncedKeyPress;
+                // And reset the timer
+                resetTimer();
+            }
+        }
+    }
+
+    // Signals the key has changed from open to closed, or the reverse.
+    bool keyChanged;
+    // The current debounced state of the key.
+    bool keyReleased;
+
+private:
+    void resetTimer() {
+        if (debouncedKeyPress) {
+            count = releaseMsec / checkMsec;
+        } else {
+            count = pressMsec / checkMsec;
+        }
+    }
+
+    uint8_t count = releaseMsec / checkMsec;
+    // This holds the debounced state of the key.
+    bool debouncedKeyPress = false; 
+};
+
+Debouncer padADebounce;
+Debouncer padBDebounce;
+#endif // DEBOUNCE
+
 
 inline uint16_t readPins() {
     return PIND & 0xFC;
@@ -229,9 +289,26 @@ void interruptHandler(void) {
   }
 #endif
   // newPin high? That's a release since there are pull-up resistors.
+
+#ifdef DEBOUNCE  
+  padADebounce.debounce(newPins & padAInBit);
+  if (padADebounce.keyChanged) {
+    bool padA = padADebounce.keyReleased;
+    eventOccurred(padA? PADA_RELEASE : PADA_PRESS);
+    digitalWrite(ledOut, !padA);
+  }
+
+  padBDebounce.debounce(newPins & padBInBit);
+  if (padBDebounce.keyChanged) {
+    eventOccurred(padBDebounce.keyReleased? PADB_RELEASE : PADB_PRESS);
+  }
+#else // DEBOUNCE
+
   uint16_t newPin = newPins & padAInBit;
   if (newPin != (oldPins & padAInBit)) {
+    bool padA = newPin == padAInBit;
     eventOccurred(newPin == padAInBit ? PADA_RELEASE : PADA_PRESS);
+    digitalWrite(ledOut, !padA);
   }
   newPin = newPins & padBInBit;
   if (newPin != (oldPins & padBInBit)) {
@@ -239,7 +316,9 @@ void interruptHandler(void) {
   }
   
   oldPins = newPins;
-  
+
+#endif // DEBOUNCE
+
   // Process any incoming command data...
   if (commandBusy) {
     return;
@@ -290,7 +369,7 @@ void setup() {
   resetCommandBuilder();
   
   // Interrupt handler
-  Timer1.initialize(20000); // Every 1/200th of a second (interrupt every 5 milliseconds).
+  Timer1.initialize(interruptPeriodMs * 1000); // argument is microseconds
   Timer1.attachInterrupt(interruptHandler);
 }
 
