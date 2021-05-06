@@ -48,6 +48,7 @@ const uint32_t PADA_PRESS         = 0x1000;
 const uint32_t PADB_RELEASE       = 0x2000;
 const uint32_t PADB_PRESS         = 0x3000;
 const uint32_t COMMAND_TO_PROCESS = 0x4000;
+const uint32_t END_OF_KEYING      = 0x5000;
 
 // Events are encoded in the 32 bits:
 // 3322222 22222111 11111110 000000000
@@ -77,25 +78,36 @@ void processEvent(const uint32_t e) {
   switch(e & 0xf000) {
     case PADA_RELEASE:
       Serial.print("-");
+      Serial.print((uint8_t) ((e >> 8) & 0x0f));
+      Serial.print((uint8_t)  (e       & 0x0f));
       break;
     case PADA_PRESS:
       Serial.print("+");
+      Serial.print((uint8_t) ((e >> 8) & 0x0f));
+      Serial.print((uint8_t)  (e       & 0x0f));
       break;
-    // TODO: PADB release and press will not be exposed over serial, they'll be consumed by the keyer code and transformed into + / - sequences.
+    // TODO: PADB release and press will eventually not be exposed over serial, they'll be consumed by the keyer code and transformed into + / - sequences.
     case PADB_RELEASE:
       Serial.print("|");
+      Serial.print((uint8_t) ((e >> 8) & 0x0f));
+      Serial.print((uint8_t)  (e       & 0x0f));
       break;
     case PADB_PRESS:
       Serial.print("*");
+      Serial.print((uint8_t) ((e >> 8) & 0x0f));
+      Serial.print((uint8_t)  (e       & 0x0f));
       break;
     case COMMAND_TO_PROCESS:
       processCommand();
       resetCommandBuilder();
       break;
+    case END_OF_KEYING:
+      Serial.print(".");
+      break;
   }
 }
 
-// #define DEBUGEVENT
+#define DEBUGEVENT
 void processNextEvent() {
   // If there any events on the FIFO queue that were pushed by the ISR, process them here in the main non-interrupt loop.
   uint32_t event;
@@ -104,14 +116,17 @@ void processNextEvent() {
     char buf[80];
     sprintf(buf, "Got an event 0x%04x in processNextEvent", event);
     Serial.println(buf);
-#endif
+#else
     processEvent(event);
+#endif
   }
 }
 
 // INTERRUPT CONTROL -----------------------------------------------------------------------------------------------------------
 
-const uint16_t interruptPeriodMs = 2;
+const uint16_t interruptPeriodMs = 1;
+volatile uint16_t interruptCount = 0;
+volatile bool keyingInProgress = false;
 
 // DEBOUNCE CONTROL ------------------------------------------------------------------------------------------------------------
 #define DEBOUNCE
@@ -286,6 +301,17 @@ void processCommand() {
 }
 
 void interruptHandler(void) {
+  interruptCount++;
+
+  // Detect end of keying timeout...
+  if (interruptCount > 2000) {
+    if (keyingInProgress) {
+      eventOccurred(END_OF_KEYING);
+    }
+    keyingInProgress = false;
+    interruptCount = 0;
+  }
+  
   // Process any pin state transitions...
   newPins = readPins();
 #ifdef DEBUGPINS
@@ -301,25 +327,43 @@ void interruptHandler(void) {
   padADebounce.debounce(newPins & padAInBit);
   if (padADebounce.keyChanged) {
     bool padA = padADebounce.keyReleased;
-    eventOccurred(padA? PADA_RELEASE : PADA_PRESS);
+    if (padA) {
+      keyingInProgress = true;
+    }
+    eventOccurred((padA ? PADA_RELEASE : PADA_PRESS) | interruptCount);
+    interruptCount = 0;
     digitalWrite(ledOut, !padA);
   }
 
   padBDebounce.debounce(newPins & padBInBit);
   if (padBDebounce.keyChanged) {
-    eventOccurred(padBDebounce.keyReleased? PADB_RELEASE : PADB_PRESS);
+    bool padB = padBDebounce.keyReleased;
+    if (padB) {
+      keyingInProgress = true;
+    }
+    eventOccurred((padB ? PADB_RELEASE : PADB_PRESS) | interruptCount);
+    interruptCount = 0;
   }
 #else // DEBOUNCE
 
   uint16_t newPin = newPins & padAInBit;
   if (newPin != (oldPins & padAInBit)) {
     bool padA = newPin == padAInBit;
-    eventOccurred(newPin == padAInBit ? PADA_RELEASE : PADA_PRESS);
+    if (padA) {
+      keyingInProgress = true;
+    }
+    eventOccurred((newPin == padAInBit ? PADA_RELEASE : PADA_PRESS) | interruptCount);
+    interruptCount = 0;
     digitalWrite(ledOut, !padA);
   }
   newPin = newPins & padBInBit;
   if (newPin != (oldPins & padBInBit)) {
-    eventOccurred(newPin == padBInBit ? PADB_RELEASE : PADB_PRESS);
+    bool padB = newPin == padBInBit;
+    if (padB) {
+      keyingInProgress = true;
+    }    
+    eventOccurred((padB ? PADB_RELEASE : PADB_PRESS) | interruptCount);
+    interruptCount = 0;
   }
   
   oldPins = newPins;
