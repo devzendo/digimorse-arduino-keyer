@@ -5,7 +5,7 @@
 // Libraries required:
 // TimerOne
 //
-// (C) 2020 Matt Gumbley M0CUV
+// (C) 2020-2021 Matt Gumbley M0CUV
 //
 
 #include <Arduino.h> 
@@ -43,21 +43,27 @@ const int sidetoneOut = 5;  // PWM, with RC low-pass filter network to convert
 // EVENT MANAGEMENT ------------------------------------------------------------------------------------------------------------
 
 // We have several events that we can react to....
-const uint16_t PADA_RELEASE = 0;
-const uint16_t PADA_PRESS = 1;
-const uint16_t PADB_RELEASE = 2;
-const uint16_t PADB_PRESS = 3;
-const uint16_t COMMAND_TO_PROCESS = 4;
+const uint32_t PADA_RELEASE       = 0x0000;
+const uint32_t PADA_PRESS         = 0x1000;
+const uint32_t PADB_RELEASE       = 0x2000;
+const uint32_t PADB_PRESS         = 0x3000;
+const uint32_t COMMAND_TO_PROCESS = 0x4000;
+
+// Events are encoded in the 32 bits:
+// 3322222 22222111 11111110 000000000
+// 1098765 43210987 65432109 876543210
+// CODE    UNUSED   MSB-DUR  LSB-DUR
+// CODE is from the above list (0-F); DUR is a 16-bit duration in ms.
 
 // Events detected by the interrupt handler are enqueued on this FIFO queue, 
 // which is read by processNextEvent (in non-interrupt time).
-defineFifo(eventFifo, uint16_t, 100)
+defineFifo(eventFifo, uint32_t, 100)
 
 // Enqueue an event on the FIFO queue.
 static char zut[20];
-void eventOccurred(const uint16_t eventCode) {
+void eventOccurred(const uint32_t eventCode) {
 #ifdef DEBUGEVENT
-    sprintf(zut, ">ev:0x%02X", eventCode);
+    sprintf(zut, ">ev:0x%04X", eventCode);
     Serial.println(zut);
 #endif    
     if (!eventFifo.putInt(eventCode)) {
@@ -67,19 +73,20 @@ void eventOccurred(const uint16_t eventCode) {
 
 
 
-void processEvent(const uint16_t e) {
-  switch(e) {
+void processEvent(const uint32_t e) {
+  switch(e & 0xf000) {
     case PADA_RELEASE:
-      Serial.print("A");
+      Serial.print("-");
       break;
     case PADA_PRESS:
-      Serial.print("a");
+      Serial.print("+");
       break;
+    // TODO: PADB release and press will not be exposed over serial, they'll be consumed by the keyer code and transformed into + / - sequences.
     case PADB_RELEASE:
-      Serial.print("B");
+      Serial.print("|");
       break;
     case PADB_PRESS:
-      Serial.print("b");
+      Serial.print("*");
       break;
     case COMMAND_TO_PROCESS:
       processCommand();
@@ -91,11 +98,11 @@ void processEvent(const uint16_t e) {
 // #define DEBUGEVENT
 void processNextEvent() {
   // If there any events on the FIFO queue that were pushed by the ISR, process them here in the main non-interrupt loop.
-  uint16_t event;
+  uint32_t event;
   if (eventFifo.get(&event)) {
 #ifdef DEBUGEVENT
     char buf[80];
-    sprintf(buf, "Got an event 0x%02x in processNextEvent", event);
+    sprintf(buf, "Got an event 0x%04x in processNextEvent", event);
     Serial.println(buf);
 #endif
     processEvent(event);
@@ -193,7 +200,7 @@ void toggleLED() {
   ledState = !ledState;
 }
 
-// Commands are read on interrupt and built up here until CR received,
+// Incoming serial commands are read on interrupt and built up here until CR received,
 // then an event is queued to cause the command to be processed. Only
 // build up when an event is not being processed (wait until the commandBusy
 // flag is false - it's set true when a command event has been queued.)
