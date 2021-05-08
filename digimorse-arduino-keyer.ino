@@ -267,10 +267,9 @@ void processCommand() {
       Serial.println("> S: MODE = straight key mode *");
       Serial.println("> Q: Display settings");
       Serial.println("> W[5-40]: Set keyer speed between 5 and 40 WPM (*12)");
+      Serial.println("> D[30-3000]: Set keyer semi-break-in timeout in ms");
       Serial.println("> R: POLARITY = reverse paddle polarity");
       Serial.println("> N: POLARITY = normal paddle polarity *");
-      Serial.println("> T: OUTPUT = timing output");
-      Serial.println("> P: OUTPUT = pulse output *");
       Serial.println("> !RESET!: Reset to all defaults");
       Serial.println("> (* indicates defaults)");
       break;
@@ -281,6 +280,7 @@ void processCommand() {
       break;
     case 'S':
       break;
+      
     case 'Q':
       break;
     case 'W': // collect speed
@@ -288,10 +288,6 @@ void processCommand() {
     case 'R':
       break;
     case 'N':
-      break;
-    case 'T':
-      break;
-    case 'P':
       break;
     default:
       if (strcmp(commandBuffer, "!RESET!") == 0) {
