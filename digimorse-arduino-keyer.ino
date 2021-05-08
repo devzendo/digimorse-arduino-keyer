@@ -48,7 +48,8 @@ const uint32_t PADA_PRESS         = 0x1000;
 const uint32_t PADB_RELEASE       = 0x2000;
 const uint32_t PADB_PRESS         = 0x3000;
 const uint32_t COMMAND_TO_PROCESS = 0x4000;
-const uint32_t END_OF_KEYING      = 0x5000;
+const uint32_t START_OF_KEYING    = 0x5000;
+const uint32_t END_OF_KEYING      = 0x6000;
 
 // Events are encoded in the 32 bits:
 // 3322222 22222111 11111110 000000000
@@ -76,6 +77,9 @@ void eventOccurred(const uint32_t eventCode) {
 
 void processEvent(const uint32_t e) {
   switch (e & 0xf000) {
+    case START_OF_KEYING:
+      Serial.print('>');
+      break;
     case PADA_RELEASE:
       Serial.print("-");
       Serial.print((uint8_t) ((e >> 8) & 0x0f));
@@ -102,7 +106,7 @@ void processEvent(const uint32_t e) {
       resetCommandBuilder();
       break;
     case END_OF_KEYING:
-      Serial.print(".");
+      Serial.print('<');
       break;
   }
 }
@@ -127,6 +131,7 @@ void processNextEvent() {
 const uint16_t interruptPeriodMs = 1;
 volatile uint16_t interruptCount = 0;
 volatile bool keyingInProgress = false;
+const uint16_t keyingTimeoutMs = 1000; // TODO make variable, stored in NVRAM
 
 // DEBOUNCE CONTROL ------------------------------------------------------------------------------------------------------------
 #define DEBOUNCE
@@ -301,10 +306,12 @@ void processCommand() {
 }
 
 void interruptHandler(void) {
+  bool startOfKeyingSent = false;
+  
   interruptCount++;
 
   // Detect end of keying timeout...
-  if (interruptCount > 2000) {
+  if (interruptCount > keyingTimeoutMs) {
     if (keyingInProgress) {
       eventOccurred(END_OF_KEYING);
     }
@@ -327,10 +334,16 @@ void interruptHandler(void) {
   padADebounce.debounce(newPins & padAInBit);
   if (padADebounce.keyChanged) {
     bool padA = padADebounce.keyReleased;
-    if (padA) {
-      keyingInProgress = true;
+    if (!padA) {
+      if (!keyingInProgress) {
+        eventOccurred(START_OF_KEYING);
+        keyingInProgress = true;
+        startOfKeyingSent = true;
+      }
     }
-    eventOccurred((padA ? PADA_RELEASE : PADA_PRESS) | interruptCount);
+    if (!startOfKeyingSent) {
+      eventOccurred((padA ? PADA_RELEASE : PADA_PRESS) | interruptCount);
+    }
     interruptCount = 0;
     digitalWrite(ledOut, !padA);
   }
@@ -338,21 +351,34 @@ void interruptHandler(void) {
   padBDebounce.debounce(newPins & padBInBit);
   if (padBDebounce.keyChanged) {
     bool padB = padBDebounce.keyReleased;
-    if (padB) {
-      keyingInProgress = true;
+    if (!padB) {
+      if (!keyingInProgress) {
+        eventOccurred(START_OF_KEYING);
+        keyingInProgress = true;
+        startOfKeyingSent = true;
+      }
     }
-    eventOccurred((padB ? PADB_RELEASE : PADB_PRESS) | interruptCount);
+    if (!startOfKeyingSent) {
+      eventOccurred((padB ? PADB_RELEASE : PADB_PRESS) | interruptCount);
+    }
     interruptCount = 0;
   }
+
 #else // DEBOUNCE
 
   uint16_t newPin = newPins & padAInBit;
   if (newPin != (oldPins & padAInBit)) {
     bool padA = newPin == padAInBit;
     if (padA) {
-      keyingInProgress = true;
+      if (!keyingInProgress) {
+        eventOccurred(START_OF_KEYING);
+        keyingInProgress = true;
+        startOfKeyingSent = true;
+      }
     }
-    eventOccurred((newPin == padAInBit ? PADA_RELEASE : PADA_PRESS) | interruptCount);
+    if (!startOfKeyingSent) {
+      eventOccurred((newPin == padAInBit ? PADA_RELEASE : PADA_PRESS) | interruptCount);
+    }
     interruptCount = 0;
     digitalWrite(ledOut, !padA);
   }
@@ -360,9 +386,15 @@ void interruptHandler(void) {
   if (newPin != (oldPins & padBInBit)) {
     bool padB = newPin == padBInBit;
     if (padB) {
-      keyingInProgress = true;
+      if (!keyingInProgress) {
+        eventOccurred(START_OF_KEYING);
+        keyingInProgress = true;
+        startOfKeyingSent = true;
+      } 
     }
-    eventOccurred((padB ? PADB_RELEASE : PADB_PRESS) | interruptCount);
+    if (!startOfKeyingSent) {
+      eventOccurred((padB ? PADB_RELEASE : PADB_PRESS) | interruptCount);
+    }
     interruptCount = 0;
   }
 
