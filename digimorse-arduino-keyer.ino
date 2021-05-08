@@ -1,4 +1,4 @@
-// 
+//
 // digimorse-arduino-keyer, an Arduino Nano-based Morse key/paddle <-> USB Serial interface and simple keyer
 // for use in the digimorse project.
 //
@@ -8,12 +8,12 @@
 // (C) 2020-2021 Matt Gumbley M0CUV
 //
 
-#include <Arduino.h> 
+#include <Arduino.h>
 #include <TimerOne.h>
 #include "SCoop.h"
 
 // INPUTS ON PINS --------------------------------------------------------------------------------------------------------------
-                           //      76543210
+//      76543210
 const int padBIn = 4;      // PIND    x  -- paddle
 const int padBInBit = 0x10;
 const int padAIn = 5;      // PIND   x   -- straight key
@@ -21,14 +21,14 @@ const int padAInBit = 0x20;
 
 // Port Manipulation
 //    B (digital pin 8 to 13)
-//    The two high bits (6 & 7) map to the crystal pins and are not usable 
+//    The two high bits (6 & 7) map to the crystal pins and are not usable
 //    C (analog input pins)
-//    D (digital pins 0 to 7) 
+//    D (digital pins 0 to 7)
 //    The two low bits (0 & 1) are for serial comms and shouldn't be changed.
 
 // PIND:
 // 7     6     5     4     3     2     -     -
-//             PADA  PADB  
+//             PADA  PADB
 
 // OUTPUTS ON PINS -------------------------------------------------------------------------------------------------------------
 
@@ -36,7 +36,7 @@ const int ledOut = 13;
 
 // TODO will need an analogue output via an RC filter to a small amp and speaker, for sidetone generation.
 const int sidetoneOut = 5;  // PWM, with RC low-pass filter network to convert
-                            // to analogue. On OCR3A, PWM phase correct.
+// to analogue. On OCR3A, PWM phase correct.
 
 
 
@@ -56,7 +56,7 @@ const uint32_t END_OF_KEYING      = 0x5000;
 // CODE    UNUSED   MSB-DUR  LSB-DUR
 // CODE is from the above list (0-F); DUR is a 16-bit duration in ms.
 
-// Events detected by the interrupt handler are enqueued on this FIFO queue, 
+// Events detected by the interrupt handler are enqueued on this FIFO queue,
 // which is read by processNextEvent (in non-interrupt time).
 defineFifo(eventFifo, uint32_t, 100)
 
@@ -64,18 +64,18 @@ defineFifo(eventFifo, uint32_t, 100)
 static char zut[20];
 void eventOccurred(const uint32_t eventCode) {
 #ifdef DEBUGEVENT
-    sprintf(zut, ">ev:0x%04X", eventCode);
-    Serial.println(zut);
-#endif    
-    if (!eventFifo.putInt(eventCode)) {
-        Serial.println("# FIFO overrun");
-    }
+  sprintf(zut, ">ev:0x%04X", eventCode);
+  Serial.println(zut);
+#endif
+  if (!eventFifo.putInt(eventCode)) {
+    Serial.println("# FIFO overrun");
+  }
 }
 
 
 
 void processEvent(const uint32_t e) {
-  switch(e & 0xf000) {
+  switch (e & 0xf000) {
     case PADA_RELEASE:
       Serial.print("-");
       Serial.print((uint8_t) ((e >> 8) & 0x0f));
@@ -139,28 +139,28 @@ const uint8_t pressMsec = 10;     // Stable time before registering pressed
 const uint8_t releaseMsec = 20;   // Stable time before registering released
 
 class Debouncer {
-public:
+  public:
     Debouncer() {
-        debouncedKeyPress = true; // If using internal pullups, the initial state is true.
+      debouncedKeyPress = true; // If using internal pullups, the initial state is true.
     }
     // called every checkMsec.
     // The key state is +5v=released, 0v=pressed; there are pullup resistors.
     void debounce(bool rawPinState) {
-        keyChanged = false;
-        keyReleased = debouncedKeyPress;
-        if (rawPinState == debouncedKeyPress) {
-            // Set the timer which allows a change from current state
-            resetTimer();
-        } else {
-            if (--count == 0) {
-                // key has changed - wait for new state to become stable
-                debouncedKeyPress = rawPinState;
-                keyChanged = true;
-                keyReleased = debouncedKeyPress;
-                // And reset the timer
-                resetTimer();
-            }
+      keyChanged = false;
+      keyReleased = debouncedKeyPress;
+      if (rawPinState == debouncedKeyPress) {
+        // Set the timer which allows a change from current state
+        resetTimer();
+      } else {
+        if (--count == 0) {
+          // key has changed - wait for new state to become stable
+          debouncedKeyPress = rawPinState;
+          keyChanged = true;
+          keyReleased = debouncedKeyPress;
+          // And reset the timer
+          resetTimer();
         }
+      }
     }
 
     // Signals the key has changed from open to closed, or the reverse.
@@ -168,18 +168,18 @@ public:
     // The current debounced state of the key.
     bool keyReleased;
 
-private:
+  private:
     void resetTimer() {
-        if (debouncedKeyPress) {
-            count = releaseMsec / checkMsec;
-        } else {
-            count = pressMsec / checkMsec;
-        }
+      if (debouncedKeyPress) {
+        count = releaseMsec / checkMsec;
+      } else {
+        count = pressMsec / checkMsec;
+      }
     }
 
     uint8_t count = releaseMsec / checkMsec;
     // This holds the debounced state of the key.
-    bool debouncedKeyPress = false; 
+    bool debouncedKeyPress = false;
 };
 
 Debouncer padADebounce;
@@ -188,7 +188,7 @@ Debouncer padBDebounce;
 
 
 inline uint16_t readPins() {
-    return PIND & 0xFC;
+  return PIND & 0xFC;
 }
 
 // input change detection, called in loop() for test harness, or in ISR
@@ -208,7 +208,7 @@ void tobin(char *buf, int x) {
   buf[8] = '\0';
 }
 
-// #define DEBUGPINS 
+// #define DEBUGPINS
 int ledState = LOW;
 void toggleLED() {
   digitalWrite(ledOut, ledState);
@@ -289,7 +289,7 @@ void processCommand() {
     case 'P':
       break;
     default:
-      if (strcmp(commandBuffer, "!RESET!") ==0) {
+      if (strcmp(commandBuffer, "!RESET!") == 0) {
         resetToDefaults();
       } else {
         out[2] = '?';
@@ -311,19 +311,19 @@ void interruptHandler(void) {
     keyingInProgress = false;
     interruptCount = 0;
   }
-  
+
   // Process any pin state transitions...
   newPins = readPins();
 #ifdef DEBUGPINS
   if (newPins != oldPins) {
-    
+
     tobin(out, newPins);
     Serial.println(out);
   }
 #endif
   // newPin high? That's a release since there are pull-up resistors.
 
-#ifdef DEBOUNCE  
+#ifdef DEBOUNCE
   padADebounce.debounce(newPins & padAInBit);
   if (padADebounce.keyChanged) {
     bool padA = padADebounce.keyReleased;
@@ -361,11 +361,11 @@ void interruptHandler(void) {
     bool padB = newPin == padBInBit;
     if (padB) {
       keyingInProgress = true;
-    }    
+    }
     eventOccurred((padB ? PADB_RELEASE : PADB_PRESS) | interruptCount);
     interruptCount = 0;
   }
-  
+
   oldPins = newPins;
 
 #endif // DEBOUNCE
@@ -374,7 +374,7 @@ void interruptHandler(void) {
   if (commandBusy) {
     return;
   }
-  
+
   int inByte = Serial.read();
   if (inByte == -1) {
     // No data...
@@ -402,23 +402,23 @@ void interruptHandler(void) {
 void setup() {
   Serial.begin(115200); // TODO higher? is it possible?
   Serial.println("# DigiMorse Arduino Keyer");
-  Serial.println("# (C) 2020 Matt Gumbley M0CUV");
+  Serial.println("# (C) 2020-2021 Matt Gumbley M0CUV");
 
   // The buttons... let's not have anything on PIND floating.
-  for (int p=0; p<8; p++) {
+  for (int p = 0; p < 8; p++) {
     pinMode(p, INPUT_PULLUP);
   }
   // The paddle inputs, specifically..
   pinMode(padAIn, INPUT_PULLUP);
   pinMode(padBIn, INPUT_PULLUP);
-  
+
   pinMode(ledOut, OUTPUT);
   digitalWrite(13, LOW);
-  
+
   initialPins = oldPins = newPins = readPins();
 
   resetCommandBuilder();
-  
+
   // Interrupt handler
   Timer1.initialize(interruptPeriodMs * 1000); // argument is microseconds
   Timer1.attachInterrupt(interruptHandler);
