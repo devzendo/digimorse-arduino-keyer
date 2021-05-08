@@ -78,40 +78,40 @@ void eventOccurred(const uint32_t eventCode) {
 void processEvent(const uint32_t e) {
   switch (e & 0xf000) {
     case START_OF_KEYING:
-      Serial.print('>');
+      Serial.write('>');
       break;
     case PADA_RELEASE:
-      Serial.print("-");
-      Serial.print((uint8_t) ((e >> 8) & 0x0f));
-      Serial.print((uint8_t)  (e       & 0x0f));
+      Serial.write('-');
+      Serial.write((uint8_t) ((e >> 8) & 0x0f));
+      Serial.write((uint8_t)  (e       & 0x0f));
       break;
     case PADA_PRESS:
-      Serial.print("+");
-      Serial.print((uint8_t) ((e >> 8) & 0x0f));
-      Serial.print((uint8_t)  (e       & 0x0f));
+      Serial.write('+');
+      Serial.write((uint8_t) ((e >> 8) & 0x0f));
+      Serial.write((uint8_t)  (e       & 0x0f));
       break;
     // TODO: PADB release and press will eventually not be exposed over serial, they'll be consumed by the keyer code and transformed into + / - sequences.
     case PADB_RELEASE:
-      Serial.print("|");
-      Serial.print((uint8_t) ((e >> 8) & 0x0f));
-      Serial.print((uint8_t)  (e       & 0x0f));
+      Serial.write('|');
+      Serial.write((uint8_t) ((e >> 8) & 0x0f));
+      Serial.write((uint8_t)  (e       & 0x0f));
       break;
     case PADB_PRESS:
-      Serial.print("*");
-      Serial.print((uint8_t) ((e >> 8) & 0x0f));
-      Serial.print((uint8_t)  (e       & 0x0f));
+      Serial.write('*');
+      Serial.write((uint8_t) ((e >> 8) & 0x0f));
+      Serial.write((uint8_t)  (e       & 0x0f));
       break;
     case COMMAND_TO_PROCESS:
       processCommand();
       resetCommandBuilder();
       break;
     case END_OF_KEYING:
-      Serial.print('<');
+      Serial.write('<');
       break;
   }
 }
 
-#define DEBUGEVENT
+// #define DEBUGEVENT
 void processNextEvent() {
   // If there any events on the FIFO queue that were pushed by the ISR, process them here in the main non-interrupt loop.
   uint32_t event;
