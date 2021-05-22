@@ -78,7 +78,7 @@ void eventOccurred(const uint32_t eventCode) {
 void processEvent(const uint32_t e) {
   switch (e & 0xf000) {
     case START_OF_KEYING:
-      Serial.write('>');
+      Serial.write('S');
       break;
     case PADA_RELEASE:
       Serial.write('-');
@@ -106,7 +106,7 @@ void processEvent(const uint32_t e) {
       resetCommandBuilder();
       break;
     case END_OF_KEYING:
-      Serial.write('<');
+      Serial.write('E');
       break;
   }
 }

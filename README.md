@@ -53,7 +53,7 @@ with the Arduino IDE's serial console.
 Events
 ======
 Tapping the Morse key or paddle causes timing events to be emitted. The
-first tap will emit a 'start of keying' code, an ASCII > (greater than).
+first tap will emit a 'start of keying' code, an ASCII S.
 
 As you key, at the end of the key down, a 'press' code will be emitted.
 This is a '+' followed by a 16-bit big-engian unsigned binary number
@@ -64,7 +64,7 @@ When you next press the key, a 'release' code will be emitted. This is a
 
 The keyer has a timeout of one second. Currently not configurable. One
 second after the last event, an 'end of keying' event will be emitted.
-This is an ASCII '<' (less than).
+This is an ASCII 'E'.
 
 Commands
 ========
@@ -84,10 +84,10 @@ with any value following immediately, then a return.
 Protocol Summary
 ================
 
-'>'       Start of keying.
+'S'       Start of keying.
 '+' HH MM Press for HHMM milliseconds.
 '-' HH MM Release for HHMM milliseconds.
-'<'       End of keying.
+'E'       End of keying.
 
 Uploading to your Nano
 ----------------------
