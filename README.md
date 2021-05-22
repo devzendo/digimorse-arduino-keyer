@@ -75,7 +75,8 @@ All commands must start with a '>' (greater than) then the command letter,
 with any value following immediately, then a return.
 
 ```
->V<return>  Display version info.
+>V<return>         Display version info.
+>!RESET!<return>   Reset to all defaults.
 
 ```
 (more commands to be implemented in time....)
