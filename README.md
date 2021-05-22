@@ -15,7 +15,7 @@ Use of this variant requires downloading their CH340 USB driver.
 
 It is part of the [DigiMorse Project](https://devzendo.github.io/digimorse).
 
-(C) 2020 Matt J. Gumbley
+(C) 2020-2021 Matt J. Gumbley
 matt.gumbley@devzendo.org
 @mattgumbley @devzendo
 http://devzendo.github.io/digimorse
@@ -45,7 +45,48 @@ Release Notes
 0.0.1 First Release (work in progress)
 * Created repository!
 
- 
+Protocol
+--------
+The keyer uses the Arduino's Serial over USB protocol, so can be checked
+with the Arduino IDE's serial console.
+
+Events
+======
+Tapping the Morse key or paddle causes timing events to be emitted. The
+first tap will emit a 'start of keying' code, an ASCII > (greater than).
+
+As you key, at the end of the key down, a 'press' code will be emitted.
+This is a '+' followed by a 16-bit big-engian unsigned binary number
+giving the duration of the press in milliseconds.
+
+When you next press the key, a 'release' code will be emitted. This is a
+'-' followed by the duration of the release in milliseconds, as for '+'.
+
+The keyer has a timeout of one second. Currently not configurable. One
+second after the last event, an 'end of keying' event will be emitted.
+This is an ASCII '<' (less than).
+
+Commands
+========
+In addition to events from the keyer, commands can be issued to change
+several settings, and to enquire of device status, version, etc.
+
+All commands must start with a '>' (greater than) then the command letter,
+with any value following immediately, then a return.
+
+```
+>V<return>  Display version info.
+
+```
+(more commands to be implemented in time....)
+
+Protocol Summary
+================
+
+'>'       Start of keying.
+'+' HH MM Press for HHMM milliseconds.
+'-' HH MM Release for HHMM milliseconds.
+'<'       End of keying.
 
 Uploading to your Nano
 ----------------------
@@ -60,7 +101,11 @@ In the IDE's Serial Monitor, send a V followed by return. You should see some
 version information returned.
 
 Wire up the Nano as shown in the schematic / wiring diagram in the Docs
-directory.
+directory. The only additional components are wires and an appropriate connector
+for your Morse key / paddle, e.g. a 3.5mm stereo jack socket.
+
+For a Morse key, the tip goes to Arduino pin D5.
+For a paddle, dit goes to D5, dah goes to D4. (maybe, haven't tested that yet!)
 
 Connect a Morse key / paddle. Tapping the key / paddle should yield single bytes
 on the Serial Monitor.
@@ -80,7 +125,7 @@ This directory - the main code, and SCoop library.
 License
 -------
 This code is released under the Apache 2.0 License: http://www.apache.org/licenses/LICENSE-2.0.html.
-(C) 2020 Matt Gumbley, DevZendo.org
+(C) 2020-2021 Matt Gumbley, DevZendo.org
 
 
 Acknowledgements
