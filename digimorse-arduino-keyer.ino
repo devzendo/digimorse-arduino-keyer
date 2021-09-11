@@ -8,6 +8,7 @@
 // (C) 2020-2021 Matt Gumbley M0CUV
 //
 
+#include <inttypes.h>
 #include <Arduino.h>
 #include <TimerOne.h>
 #include "SCoop.h"
@@ -43,13 +44,13 @@ const int sidetoneOut = 5;  // PWM, with RC low-pass filter network to convert
 // EVENT MANAGEMENT ------------------------------------------------------------------------------------------------------------
 
 // We have several events that we can react to....
-const uint32_t PADA_RELEASE       = 0x0000;
-const uint32_t PADA_PRESS         = 0x1000;
-const uint32_t PADB_RELEASE       = 0x2000;
-const uint32_t PADB_PRESS         = 0x3000;
-const uint32_t COMMAND_TO_PROCESS = 0x4000;
-const uint32_t START_OF_KEYING    = 0x5000;
-const uint32_t END_OF_KEYING      = 0x6000;
+const uint32_t PADA_RELEASE       = 0x10000000;
+const uint32_t PADA_PRESS         = 0x20000000;
+const uint32_t PADB_RELEASE       = 0x30000000;
+const uint32_t PADB_PRESS         = 0x40000000;
+const uint32_t COMMAND_TO_PROCESS = 0x50000000;
+const uint32_t START_OF_KEYING    = 0x60000000;
+const uint32_t END_OF_KEYING      = 0x70000000;
 
 // Events are encoded in the 32 bits:
 // 3322222 22222111 11111110 000000000
@@ -61,55 +62,55 @@ const uint32_t END_OF_KEYING      = 0x6000;
 // which is read by processNextEvent (in non-interrupt time).
 defineFifo(eventFifo, uint32_t, 100)
 
+// #define DEBUGEVENT
+
 // Enqueue an event on the FIFO queue.
-static char zut[20];
+static char zut[40];
 void eventOccurred(const uint32_t eventCode) {
 #ifdef DEBUGEVENT
-  sprintf(zut, ">ev:0x%04X", eventCode);
+  sprintf(zut, ">ev:0x%08" PRIx32, eventCode);
   Serial.println(zut);
 #endif
-  if (!eventFifo.putInt(eventCode)) {
+  if (!eventFifo.putLong(eventCode)) {
     Serial.println("# FIFO overrun");
   }
 }
 
-//#define DEBUGEVENT
-
+static char sb[20];
 void sendByte(const uint8_t b) {
 #ifdef DEBUGEVENT
-  char buf[20];
-  sprintf(buf, "Writing byte 0x%02x %c", b, (b >= 32 && b <= 126) ? b : '.');
-  Serial.println(buf);
+  sprintf(sb, "Writing byte 0x%02x %c", b, (b >= 32 && b <= 126) ? b : '.');
+  Serial.println(sb);
 #else
   Serial.write(b);
 #endif  
 }
 
 void processEvent(const uint32_t e) {
-  switch (e & 0xf000) {
+  switch (e & 0xf0000000) {
     case START_OF_KEYING:
       sendByte('S');
       break;
     case PADA_RELEASE:
       sendByte('-');
-      sendByte((uint8_t) ((e >> 8) & 0x0f));
-      sendByte((uint8_t)  (e       & 0x0f));
+      sendByte((uint8_t) ((e >> 8) & 0xff));
+      sendByte((uint8_t)  (e       & 0xff));
       break;
     case PADA_PRESS:
       sendByte('+');
-      sendByte((uint8_t) ((e >> 8) & 0x0f));
-      sendByte((uint8_t)  (e       & 0x0f));
+      sendByte((uint8_t) ((e >> 8) & 0xff));
+      sendByte((uint8_t)  (e       & 0xff));
       break;
     // TODO: PADB release and press will eventually not be exposed over serial, they'll be consumed by the keyer code and transformed into + / - sequences.
     case PADB_RELEASE:
       sendByte('|');
-      sendByte((uint8_t) ((e >> 8) & 0x0f));
-      sendByte((uint8_t)  (e       & 0x0f));
+      sendByte((uint8_t) ((e >> 8) & 0xff));
+      sendByte((uint8_t)  (e       & 0xff));
       break;
     case PADB_PRESS:
       sendByte('*');
-      sendByte((uint8_t) ((e >> 8) & 0x0f));
-      sendByte((uint8_t)  (e       & 0x0f));
+      sendByte((uint8_t) ((e >> 8) & 0xff));
+      sendByte((uint8_t)  (e       & 0xff));
       break;
     case COMMAND_TO_PROCESS:
       processCommand();
@@ -121,14 +122,38 @@ void processEvent(const uint32_t e) {
   }
 }
 
+static char pne[40];
 void processNextEvent() {
   // If there any events on the FIFO queue that were pushed by the ISR, process them here in the main non-interrupt loop.
   uint32_t event;
   if (eventFifo.get(&event)) {
 #ifdef DEBUGEVENT
-    char buf[80];
-    sprintf(buf, "Got an event 0x%04x in processNextEvent", event);
-    Serial.println(buf);
+    char *msgType = "?";
+    switch (event & 0xf0000000) {
+      case START_OF_KEYING:
+        msgType="START_OF_KEYING";
+        break;
+      case PADA_RELEASE:
+        msgType="PADA_RELEASE";
+        break;
+      case PADA_PRESS:
+        msgType="PADA_PRESS";
+        break;
+      case PADB_RELEASE:
+        msgType="PADB_RELEASE";
+        break;
+      case PADB_PRESS:
+        msgType="PADB_PRESS";
+        break;
+      case COMMAND_TO_PROCESS:
+        msgType="COMMAND_TO_PROCESS";
+        break;
+      case END_OF_KEYING:
+        msgType="END_OF_KEYING";
+        break;
+    }
+    sprintf(pne, "<ev:0x%08" PRIx32 " %s", event, msgType);
+    Serial.println(pne);
 #endif
     processEvent(event);
   }
