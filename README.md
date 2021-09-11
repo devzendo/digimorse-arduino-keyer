@@ -1,8 +1,11 @@
 digimorse-arduino-keyer
 =======================
-This is an Arduino Nano-based Morse key/paddle <-> USB Serial interface and simple keyer, for use in the DigiMorse project.
+This is an Arduino Nano-based Morse key/paddle <-> USB Serial interface and simple keyer, for use in the DigiMorse
+project.
 
-It has been built using the Arduino IDE v1.6.4 on Windows 10, and uploaded to a third-party Arduino Nano, using the CH340 USB Serial chip.
+It has been built using the Arduino IDE v1.6.4 on Windows 10, and uploaded to a third-party Arduino Nano, using the
+CH340 USB Serial chip. Also buildable in the v1.8.16 IDE on macOS 10.15 (Catalina) (use the 'ATmega328P Old Bootloader'
+version).
 
 https://www.amazon.co.uk/gp/product/B072BMYZ18/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1
 
@@ -38,7 +41,7 @@ First release:
 
 Second release:
 * Accepts commands, implements keyer.
-* Sidetone generated on-board?
+* Sidetone generated on-board? (Would be better if this could be generated in real time via the host computer.)
 
 Release Notes
 -------------
@@ -50,13 +53,17 @@ Protocol
 The keyer uses the Arduino's Serial over USB protocol, so can be checked
 with the Arduino IDE's serial console.
 
-Events
-======
-Tapping the Morse key or paddle causes timing events to be emitted. The
-first tap will emit a 'start of keying' code, an ASCII S.
+Events from the Keyer
+=====================
+When the board initialises, it sends version information to the host in
+the form of a comment. All comments are to be ignored by the host (they could
+be logged if necessary). Comments start with a # and end with a \n.
 
-As you key, at the end of the key down, a 'press' code will be emitted.
-This is a '+' followed by a 16-bit big-engian unsigned binary number
+Tapping the Morse key or paddle causes timing events to be emitted. The
+initial down-press of the key will emit a 'start of keying' code, an ASCII S.
+
+As you release, at the end of the key down, a 'press' code will be emitted.
+This is a '+' followed by a 16-bit big-endian unsigned binary number
 giving the duration of the press in milliseconds.
 
 When you next press the key, a 'release' code will be emitted. This is a
@@ -66,8 +73,8 @@ The keyer has a timeout of one second. Currently not configurable. One
 second after the last event, an 'end of keying' event will be emitted.
 This is an ASCII 'E'.
 
-Commands
-========
+Commands to the Keyer
+=====================
 In addition to events from the keyer, commands can be issued to change
 several settings, and to enquire of device status, version, etc.
 
