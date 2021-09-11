@@ -164,6 +164,7 @@ void processNextEvent() {
 const uint16_t interruptPeriodMs = 1;
 volatile uint16_t interruptCount = 0;
 volatile bool keyingInProgress = false;
+volatile bool keyDown = false;
 const uint16_t keyingTimeoutMs = 1000; // TODO make variable, stored in NVRAM
 
 // DEBOUNCE CONTROL ------------------------------------------------------------------------------------------------------------
@@ -337,10 +338,10 @@ void processCommand() {
 void interruptHandler(void) {
   bool startOfKeyingSent = false;
   
-  interruptCount++;
+  interruptCount++; // this could wrap, should force END_OF_KEYING if it might.
 
   // Detect end of keying timeout...
-  if (interruptCount > keyingTimeoutMs) {
+  if (!keyDown && interruptCount > keyingTimeoutMs) {
     if (keyingInProgress) {
       eventOccurred(END_OF_KEYING);
     }
@@ -363,7 +364,10 @@ void interruptHandler(void) {
   padADebounce.debounce(newPins & padAInBit);
   if (padADebounce.keyChanged) {
     bool padA = padADebounce.keyReleased;
-    if (!padA) {
+    if (padA) {
+      keyDown = false;
+    } else {
+      keyDown = true;
       if (!keyingInProgress) {
         eventOccurred(START_OF_KEYING);
         keyingInProgress = true;
@@ -380,7 +384,10 @@ void interruptHandler(void) {
   padBDebounce.debounce(newPins & padBInBit);
   if (padBDebounce.keyChanged) {
     bool padB = padBDebounce.keyReleased;
-    if (!padB) {
+    if (padB) {
+      keyDown = false;
+    } else {
+      keyDown = true;
       if (!keyingInProgress) {
         eventOccurred(START_OF_KEYING);
         keyingInProgress = true;
@@ -399,14 +406,17 @@ void interruptHandler(void) {
   if (newPin != (oldPins & padAInBit)) {
     bool padA = newPin == padAInBit;
     if (padA) {
+      keyDown = true;
       if (!keyingInProgress) {
         eventOccurred(START_OF_KEYING);
         keyingInProgress = true;
         startOfKeyingSent = true;
       }
+    } else {
+      keyDown = false;
     }
     if (!startOfKeyingSent) {
-      eventOccurred((newPin == padAInBit ? PADA_RELEASE : PADA_PRESS) | interruptCount);
+      eventOccurred((padA ? PADA_RELEASE : PADA_PRESS) | interruptCount);
     }
     interruptCount = 0;
     digitalWrite(ledOut, !padA);
@@ -415,12 +425,16 @@ void interruptHandler(void) {
   if (newPin != (oldPins & padBInBit)) {
     bool padB = newPin == padBInBit;
     if (padB) {
+      keyDown = true;
       if (!keyingInProgress) {
         eventOccurred(START_OF_KEYING);
         keyingInProgress = true;
         startOfKeyingSent = true;
       } 
+    } else {
+      keyDown = false;
     }
+    
     if (!startOfKeyingSent) {
       eventOccurred((padB ? PADB_RELEASE : PADB_PRESS) | interruptCount);
     }
