@@ -73,45 +73,54 @@ void eventOccurred(const uint32_t eventCode) {
   }
 }
 
+//#define DEBUGEVENT
 
+void sendByte(const uint8_t b) {
+#ifdef DEBUGEVENT
+  char buf[20];
+  sprintf(buf, "Writing byte 0x%02x %c", b, (b >= 32 && b <= 126) ? b : '.');
+  Serial.println(buf);
+#else
+  Serial.write(b);
+#endif  
+}
 
 void processEvent(const uint32_t e) {
   switch (e & 0xf000) {
     case START_OF_KEYING:
-      Serial.write('S');
+      sendByte('S');
       break;
     case PADA_RELEASE:
-      Serial.write('-');
-      Serial.write((uint8_t) ((e >> 8) & 0x0f));
-      Serial.write((uint8_t)  (e       & 0x0f));
+      sendByte('-');
+      sendByte((uint8_t) ((e >> 8) & 0x0f));
+      sendByte((uint8_t)  (e       & 0x0f));
       break;
     case PADA_PRESS:
-      Serial.write('+');
-      Serial.write((uint8_t) ((e >> 8) & 0x0f));
-      Serial.write((uint8_t)  (e       & 0x0f));
+      sendByte('+');
+      sendByte((uint8_t) ((e >> 8) & 0x0f));
+      sendByte((uint8_t)  (e       & 0x0f));
       break;
     // TODO: PADB release and press will eventually not be exposed over serial, they'll be consumed by the keyer code and transformed into + / - sequences.
     case PADB_RELEASE:
-      Serial.write('|');
-      Serial.write((uint8_t) ((e >> 8) & 0x0f));
-      Serial.write((uint8_t)  (e       & 0x0f));
+      sendByte('|');
+      sendByte((uint8_t) ((e >> 8) & 0x0f));
+      sendByte((uint8_t)  (e       & 0x0f));
       break;
     case PADB_PRESS:
-      Serial.write('*');
-      Serial.write((uint8_t) ((e >> 8) & 0x0f));
-      Serial.write((uint8_t)  (e       & 0x0f));
+      sendByte('*');
+      sendByte((uint8_t) ((e >> 8) & 0x0f));
+      sendByte((uint8_t)  (e       & 0x0f));
       break;
     case COMMAND_TO_PROCESS:
       processCommand();
       resetCommandBuilder();
       break;
     case END_OF_KEYING:
-      Serial.write('E');
+      sendByte('E');
       break;
   }
 }
 
-// #define DEBUGEVENT
 void processNextEvent() {
   // If there any events on the FIFO queue that were pushed by the ISR, process them here in the main non-interrupt loop.
   uint32_t event;
@@ -120,9 +129,8 @@ void processNextEvent() {
     char buf[80];
     sprintf(buf, "Got an event 0x%04x in processNextEvent", event);
     Serial.println(buf);
-#else
-    processEvent(event);
 #endif
+    processEvent(event);
   }
 }
 
@@ -456,4 +464,3 @@ void loop() {
   // Put your main code here, to run repeatedly.
   processNextEvent();
 }
-
