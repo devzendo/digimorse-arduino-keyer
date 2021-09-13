@@ -13,12 +13,23 @@
 #include <TimerOne.h>
 #include "SCoop.h"
 
+// Debugging flags
+//#define DEBUGEVENT
+//#define DEBUGDEBOUNCE
+//#define DEBUGPINS
+
+
+#ifdef DEBUGEVENT || DEBUGDEBOUNCE || DEBUGPINS
+static char msgBuf[40];
+static char intrMsgBuf[40];
+#endif
+
 // INPUTS ON PINS --------------------------------------------------------------------------------------------------------------
 //      76543210
 const int padBIn = 4;      // PIND    x  -- paddle
-const int padBInBit = 0x10;
+const uint16_t padBInBit = 0x0010;
 const int padAIn = 5;      // PIND   x   -- straight key
-const int padAInBit = 0x20;
+const uint16_t padAInBit = 0x0020;
 
 // Port Manipulation
 //    B (digital pin 8 to 13)
@@ -62,25 +73,21 @@ const uint32_t END_OF_KEYING      = 0x70000000;
 // which is read by processNextEvent (in non-interrupt time).
 defineFifo(eventFifo, uint32_t, 100)
 
-// #define DEBUGEVENT
-
 // Enqueue an event on the FIFO queue.
-static char zut[40];
 void eventOccurred(const uint32_t eventCode) {
 #ifdef DEBUGEVENT
-  sprintf(zut, ">ev:0x%08" PRIx32, eventCode);
-  Serial.println(zut);
+  sprintf(msgBuf, ">ev:0x%08" PRIx32, eventCode);
+  Serial.println(msgBuf);
 #endif
   if (!eventFifo.putLong(eventCode)) {
     Serial.println("# FIFO overrun");
   }
 }
 
-static char sb[20];
 void sendByte(const uint8_t b) {
 #ifdef DEBUGEVENT
-  sprintf(sb, "Writing byte 0x%02x %c", b, (b >= 32 && b <= 126) ? b : '.');
-  Serial.println(sb);
+  sprintf(msgBuf, "Writing byte 0x%02x %c", b, (b >= 32 && b <= 126) ? b : '.');
+  Serial.println(msgBuf);
 #else
   Serial.write(b);
 #endif  
@@ -122,7 +129,6 @@ void processEvent(const uint32_t e) {
   }
 }
 
-static char pne[40];
 void processNextEvent() {
   // If there any events on the FIFO queue that were pushed by the ISR, process them here in the main non-interrupt loop.
   uint32_t event;
@@ -152,8 +158,8 @@ void processNextEvent() {
         msgType="END_OF_KEYING";
         break;
     }
-    sprintf(pne, "<ev:0x%08" PRIx32 " %s", event, msgType);
-    Serial.println(pne);
+    sprintf(msgBuf, "<ev:0x%08" PRIx32 " %s", event, msgType);
+    Serial.println(msgBuf);
 #endif
     processEvent(event);
   }
@@ -179,16 +185,26 @@ const uint8_t releaseMsec = 20;   // Stable time before registering released
 
 class Debouncer {
   public:
-    Debouncer() {
+    Debouncer(const char which) {
       debouncedKeyPress = true; // If using internal pullups, the initial state is true.
+      debouncerLabel = which;
     }
+    
     // called every checkMsec.
     // The key state is +5v=released, 0v=pressed; there are pullup resistors.
     void debounce(bool rawPinState) {
+#ifdef DEBUGDEBOUNCE
+      sprintf(intrMsgBuf, "%c: input %s", debouncerLabel, rawPinState ? "true" : "false");
+      Serial.println(intrMsgBuf);
+#endif
       keyChanged = false;
       keyReleased = debouncedKeyPress;
       if (rawPinState == debouncedKeyPress) {
         // Set the timer which allows a change from current state
+#ifdef DEBUGDEBOUNCE
+        sprintf(intrMsgBuf, "%c: reset %d", debouncerLabel, keyReleased);
+        Serial.println(intrMsgBuf);
+#endif
         resetTimer();
       } else {
         if (--count == 0) {
@@ -196,6 +212,10 @@ class Debouncer {
           debouncedKeyPress = rawPinState;
           keyChanged = true;
           keyReleased = debouncedKeyPress;
+#ifdef DEBUGDEBOUNCE
+          sprintf(intrMsgBuf, "%c: changed %d", debouncerLabel, keyReleased);
+          Serial.println(intrMsgBuf);
+#endif
           // And reset the timer
           resetTimer();
         }
@@ -219,15 +239,16 @@ class Debouncer {
     uint8_t count = releaseMsec / checkMsec;
     // This holds the debounced state of the key.
     bool debouncedKeyPress = false;
+    char debouncerLabel = '?';
 };
 
-Debouncer padADebounce;
-Debouncer padBDebounce;
+Debouncer padADebounce('A');
+Debouncer padBDebounce('B');
 #endif // DEBOUNCE
 
 
 inline uint16_t readPins() {
-  return PIND & 0xFC;
+  return PIND & 0x00FC;
 }
 
 // input change detection, called in loop() for test harness, or in ISR
@@ -247,7 +268,6 @@ void tobin(char *buf, int x) {
   buf[8] = '\0';
 }
 
-// #define DEBUGPINS
 int ledState = LOW;
 void toggleLED() {
   digitalWrite(ledOut, ledState);
@@ -353,9 +373,11 @@ void interruptHandler(void) {
   newPins = readPins();
 #ifdef DEBUGPINS
   if (newPins != oldPins) {
-
-    tobin(out, newPins);
-    Serial.println(out);
+    tobin(intrMsgBuf, newPins);
+    Serial.println(intrMsgBuf);
+    Serial.println("xxABxx--");
+//    sprintf(intrMsgBuf, ">pin:new 0x%04" PRIx16 " old 0x%04" PRIx16, newPins, oldPins);
+//    Serial.println(intrMsgBuf);   
   }
 #endif
   // newPin high? That's a release since there are pull-up resistors.
@@ -364,6 +386,10 @@ void interruptHandler(void) {
   padADebounce.debounce(newPins & padAInBit);
   if (padADebounce.keyChanged) {
     bool padA = padADebounce.keyReleased;
+#ifdef DEBUGDEBOUNCE
+    sprintf(intrMsgBuf, ">A:%s", padA ? "true" : "false");
+    Serial.println(intrMsgBuf);
+#endif    
     if (padA) {
       keyDown = false;
     } else {
@@ -384,6 +410,10 @@ void interruptHandler(void) {
   padBDebounce.debounce(newPins & padBInBit);
   if (padBDebounce.keyChanged) {
     bool padB = padBDebounce.keyReleased;
+#ifdef DEBUGDEBOUNCE
+    sprintf(intrMsgBuf, ">B:%s", padB ? "true" : "false");
+    Serial.println(intrMsgBuf);
+#endif    
     if (padB) {
       keyDown = false;
     } else {
@@ -441,9 +471,9 @@ void interruptHandler(void) {
     interruptCount = 0;
   }
 
-  oldPins = newPins;
-
 #endif // DEBOUNCE
+
+  oldPins = newPins;
 
   // Process any incoming command data...
   if (commandBusy) {
