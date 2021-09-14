@@ -476,6 +476,7 @@ void processCommand() {
       strcpy(out + 2, "v0.0");
       break;
     case 'K':
+      Serial.println("> Keyer mode is currently unfinished; come back later....");
       keyMode = PADDLE;
       setKeyModeFunction();
       saveConfig();
