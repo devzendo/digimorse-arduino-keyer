@@ -72,7 +72,7 @@ unsigned long get_eeprom_crc(void) {
 }
 
 // Update a uint16_t (big-endian) into an address in the EEPROM.
-void update_eeprom_uint16_t(int offset, unsigned uint16_t value) {
+void update_eeprom_uint16_t(int offset, uint16_t value) {
   EEPROM.update(offset,     (value >> 8) & 0xFF);
   EEPROM.update(offset + 1,  value       & 0xFF);
 }
