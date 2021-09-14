@@ -29,6 +29,7 @@ const int STRAIGHT_KEY = 0x00;
 const int PADDLE       = 0x01;
 
 int keyMode = STRAIGHT_KEY;
+volatile uint16_t keyBreakInMs = 1000;
 
 // EEPROM Configuration --------------------------------------------------------------------------------------------------------
 // Using code written by Christopher Andrews. https://www.arduino.cc/en/Tutorial/LibraryExamples/EEPROMCrc
@@ -39,8 +40,9 @@ const int EEPROM_CRC0 =  0x00;
 const int EEPROM_CRC1 =  0x01;
 const int EEPROM_CRC2 =  0x02;
 const int EEPROM_CRC3 =  0x03;
-const int EEPROM_MODE =  0X04;
 
+const int EEPROM_MODE =  0X04;
+const int EEPROM_KEY_BREAK_IN = 0x05; // and 0x06
 
 unsigned long compute_eeprom_crc(void) {
   const unsigned long crc_table[16] = {
@@ -67,6 +69,17 @@ unsigned long get_eeprom_crc(void) {
          ((((unsigned long) EEPROM[EEPROM_CRC1]) << 16) & 0x00FF0000) |
          ((((unsigned long) EEPROM[EEPROM_CRC2]) << 8)  & 0x0000FF00) |
          ((((unsigned long) EEPROM[EEPROM_CRC3]))       & 0x000000FF);
+}
+
+// Update a uint16_t (big-endian) into an address in the EEPROM.
+void update_eeprom_uint16_t(int offset, unsigned uint16_t value) {
+  EEPROM.update(offset,     (value >> 8) & 0xFF);
+  EEPROM.update(offset + 1,  value       & 0xFF);
+}
+
+uint16_t get_eeprom_uint16_t(int offset) {
+  return  ((((uint16_t) EEPROM[offset])      << 8)  & 0xFF00) |
+          ((((uint16_t) EEPROM[offset + 1]))        & 0x00FF);
 }
 
 // Update the CRC (big-endian) into the first 4 bytes of the EEPROM.
@@ -114,10 +127,12 @@ unsigned char b;
 void resetToDefaults() {
   keyMode = STRAIGHT_KEY;
   setKeyModeFunction();
+  keyBreakInMs = 1000;
 }
 
 void saveConfig() {
   EEPROM.update(EEPROM_MODE, keyMode);
+  update_eeprom_uint16_t(EEPROM_KEY_BREAK_IN, keyBreakInMs);
   update_eeprom_crc(compute_eeprom_crc());
 }
 
@@ -139,6 +154,7 @@ void setKeyModeFunction() {
 void loadConfig() {
   keyMode = EEPROM.read(EEPROM_MODE);
   setKeyModeFunction();
+  keyBreakInMs = get_eeprom_uint16_t(EEPROM_KEY_BREAK_IN);
 }
 
 // INPUTS ON PINS --------------------------------------------------------------------------------------------------------------
@@ -291,8 +307,6 @@ volatile bool keyDown = false;
 volatile bool startOfKeyingSent = false;
 volatile void (*keyModeFunction)() = &nullKeyFunction;
 
-const uint16_t keyingTimeoutMs = 1000; // TODO make variable, stored in NVRAM
-
 // DEBOUNCE CONTROL ------------------------------------------------------------------------------------------------------------
 #define DEBOUNCE
 
@@ -416,6 +430,20 @@ void enqueueCommand() {
 
 char out[40];
 
+int collectNumericParameter() {
+  int number = 0;
+  for (int idx=1; commandBuffer[idx] != '\0' && idx < MAX_COMMAND_LEN; idx++) {
+    if (commandBuffer[idx] >= 0x30 && commandBuffer[idx] <= 0x39) {
+      number *= 10;
+      number += (commandBuffer[idx] - 0x30);
+    } else {
+      Serial.println("> Numeric parameter expected");
+      return -1;
+    }
+  }
+  return number;
+}
+
 // A command from the user has been received in the command buffer.
 void processCommand() {
 #ifdef DEBUGCOMMAND
@@ -438,7 +466,7 @@ void processCommand() {
       Serial.println("> S: MODE = straight key mode *");
       Serial.println("> Q: Display settings");
       Serial.println("> W[5-40]: Set keyer speed between 5 and 40 WPM (*12)");
-      Serial.println("> D[30-3000]: Set keyer semi-break-in timeout in ms");
+      Serial.println("> D[30-3000]: Set keyer semi-break-in timeout in ms (*1000)");
       Serial.println("> R: POLARITY = reverse paddle polarity");
       Serial.println("> N: POLARITY = normal paddle polarity *");
       Serial.println("> !RESET!: Reset to all defaults");
@@ -460,9 +488,23 @@ void processCommand() {
       
     case 'Q':
       sprintf(out, "> %s mode", keyMode == STRAIGHT_KEY ? "Straight" : "Keyer");
+      Serial.println(out);
+      sprintf(out, "> Break-in timeout %d ms", keyBreakInMs);
       // last line gets printed automatically..
       break;
     case 'W': // collect speed
+      break;
+    case 'D': // collect break-in timeout in ms
+      int ms = collectNumericParameter();
+      if (ms == -1) {
+        return;
+      }
+      if (ms >= 30 && ms <= 3000) {
+        keyBreakInMs = ms;
+        saveConfig();
+      } else {
+        strcpy(out + 2, "D[30-3000] out of range");
+      }
       break;
     case 'R':
       break;
@@ -635,7 +677,7 @@ void interruptHandler(void) {
   interruptCount++; // this could wrap, should force END_OF_KEYING if it might.
 
   // Detect end of keying timeout...
-  if (!keyDown && interruptCount > keyingTimeoutMs) {
+  if (!keyDown && interruptCount > keyBreakInMs) {
     if (keyingInProgress) {
       eventOccurred(END_OF_KEYING);
     }
