@@ -71,10 +71,10 @@ unsigned long get_eeprom_crc(void) {
 
 // Update the CRC (big-endian) into the first 4 bytes of the EEPROM.
 void update_eeprom_crc(unsigned long crc) {
-  EEPROM.write(EEPROM_CRC0, (crc >> 24) & 0xFF);
-  EEPROM.write(EEPROM_CRC1, (crc >> 16) & 0xFF);
-  EEPROM.write(EEPROM_CRC2, (crc >> 8)  & 0xFF);
-  EEPROM.write(EEPROM_CRC3,  crc        & 0xFF);
+  EEPROM.update(EEPROM_CRC0, (crc >> 24) & 0xFF);
+  EEPROM.update(EEPROM_CRC1, (crc >> 16) & 0xFF);
+  EEPROM.update(EEPROM_CRC2, (crc >> 8)  & 0xFF);
+  EEPROM.update(EEPROM_CRC3,  crc        & 0xFF);
 }
 
 #ifdef DEBUGEEPROM
@@ -117,7 +117,7 @@ void resetToDefaults() {
 }
 
 void saveConfig() {
-  EEPROM.write(EEPROM_MODE, keyMode);
+  EEPROM.update(EEPROM_MODE, keyMode);
   update_eeprom_crc(compute_eeprom_crc());
 }
 
