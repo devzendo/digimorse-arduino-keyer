@@ -18,6 +18,7 @@
 //#define DEBUGEVENT
 //#define DEBUGDEBOUNCE
 //#define DEBUGPINS
+//#define DEBUGCOMMAND
 
 #ifdef DEBUGEVENT || DEBUGDEBOUNCE || DEBUGPINS
 static char msgBuf[40];
@@ -90,10 +91,9 @@ void update_eeprom_crc(unsigned long crc) {
   EEPROM.update(EEPROM_CRC3,  crc        & 0xFF);
 }
 
-#ifdef DEBUGEEPROM
 static char hexdigs[]="0123456789abcdef";
 
-void eeprom_dump()
+void dump_eeprom()
 {
 const int lineLen = 80;
 char line[lineLen];
@@ -122,7 +122,7 @@ unsigned char b;
     left -= upto16;
   }
 }
-#endif
+
 
 void resetToDefaults() {
   keyMode = STRAIGHT_KEY;
@@ -134,6 +134,12 @@ void saveConfig() {
   EEPROM.update(EEPROM_MODE, keyMode);
   update_eeprom_uint16_t(EEPROM_KEY_BREAK_IN, keyBreakInMs);
   update_eeprom_crc(compute_eeprom_crc());
+}
+
+void wipe_eeprom() {
+  for (int i = 0; i < EEPROM.length(); i++) {
+    EEPROM.update(i, 0xFF);   
+  }
 }
 
 extern volatile void (*keyModeFunction)();
@@ -152,9 +158,21 @@ void setKeyModeFunction() {
 
 // Precondition: CRC is valid, maybe defaults have just been written on corruption/initial startup.
 void loadConfig() {
+  bool bogus = false;
   keyMode = EEPROM.read(EEPROM_MODE);
+  if (keyMode != STRAIGHT_KEY && keyMode != PADDLE) {
+    bogus = true;
+  }
   setKeyModeFunction();
   keyBreakInMs = get_eeprom_uint16_t(EEPROM_KEY_BREAK_IN);
+  if (keyBreakInMs < 30 || keyBreakInMs > 3000) {
+    bogus = true;
+  }
+  if (bogus) {
+    Serial.println("# Invalid configuration, valid CRC; Resetting...");
+    resetToDefaults();
+    saveConfig();
+  }
 }
 
 // INPUTS ON PINS --------------------------------------------------------------------------------------------------------------
@@ -412,7 +430,6 @@ void toggleLED() {
 // then an event is queued to cause the command to be processed. Only
 // build up when an event is not being processed (wait until the commandBusy
 // flag is false - it's set true when a command event has been queued.)
-// #define DEBUGCOMMAND
 const int MAX_COMMAND_LEN = 80;
 volatile int commandLen = 0;
 /* volatile (locks up compiler!) */ char commandBuffer[MAX_COMMAND_LEN];
@@ -431,8 +448,8 @@ void enqueueCommand() {
 char out[40];
 
 int collectNumericParameter() {
-  int number = 0;
-  for (int idx=1; commandBuffer[idx] != '\0' && idx < MAX_COMMAND_LEN; idx++) {
+    int number = 0;
+  for (int idx=1; commandBuffer[idx] != '\0' && commandBuffer[idx] != 0x0d && commandBuffer[idx] != 0x0a && idx < MAX_COMMAND_LEN; idx++) {
     if (commandBuffer[idx] >= 0x30 && commandBuffer[idx] <= 0x39) {
       number *= 10;
       number += (commandBuffer[idx] - 0x30);
@@ -446,13 +463,23 @@ int collectNumericParameter() {
 
 // A command from the user has been received in the command buffer.
 void processCommand() {
+  int numericParameter = 0;
+  
+  // ditch CR/LF, terminate on them.
+  for (int idx=0; idx < MAX_COMMAND_LEN; idx++) {
+    if (commandBuffer[idx] == 0x0d || commandBuffer[idx] == 0x0a) {
+      commandBuffer[idx] = 0x00;
+    }
+  }
 #ifdef DEBUGCOMMAND
   Serial.println("# Processing command");
-  Serial.println(commandBuffer);
+  sprintf(out, "# [%s] '%c' len %d", commandBuffer, commandBuffer[0], strlen(commandBuffer));
+  Serial.println(out);
 #endif
   if (commandLen == 0) {
     return;
   }
+
   out[0] = '>';
   out[1] = ' ';
   out[2] = 'O';
@@ -470,6 +497,8 @@ void processCommand() {
       Serial.println("> R: POLARITY = reverse paddle polarity");
       Serial.println("> N: POLARITY = normal paddle polarity *");
       Serial.println("> !RESET!: Reset to all defaults");
+      Serial.println("> !WIPE!: Erase EEPROM to empty");
+      Serial.println("> !DUMP!: Display EEPROM contents");
       Serial.println("> (* indicates defaults)");
       break;
     case 'V':
@@ -496,12 +525,12 @@ void processCommand() {
     case 'W': // collect speed
       break;
     case 'D': // collect break-in timeout in ms
-      int ms = collectNumericParameter();
-      if (ms == -1) {
+      numericParameter = collectNumericParameter();
+      if (numericParameter == -1) {
         return;
       }
-      if (ms >= 30 && ms <= 3000) {
-        keyBreakInMs = ms;
+      if (numericParameter >= 30 && numericParameter <= 3000) {
+        keyBreakInMs = numericParameter;
         saveConfig();
       } else {
         strcpy(out + 2, "D[30-3000] out of range");
@@ -512,8 +541,15 @@ void processCommand() {
     case 'N':
       break;
     default:
-      if (strcmp(commandBuffer, "!RESET!") == 0) {
+      if (strcmp("!RESET!", commandBuffer) == 0) {
         resetToDefaults();
+        saveConfig();
+        strcat(out, "> Reset.");
+      } else if (strcmp("!WIPE!", commandBuffer) == 0) {
+        wipe_eeprom();
+        strcat(out, "> Wiped.");
+      } else if (strcmp("!DUMP!", commandBuffer) == 0) {
+        dump_eeprom();
       } else {
         out[2] = '?';
         out[3] = '\0';
