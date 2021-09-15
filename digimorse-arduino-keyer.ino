@@ -461,6 +461,14 @@ int collectNumericParameter() {
   return number;
 }
 
+void ok() {
+  out[0] = '>';
+  out[1] = ' ';
+  out[2] = 'O';
+  out[3] = 'K';
+  out[4] = '\0';
+}
+
 // A command from the user has been received in the command buffer.
 void processCommand() {
   int numericParameter = 0;
@@ -480,37 +488,34 @@ void processCommand() {
     return;
   }
 
-  out[0] = '>';
-  out[1] = ' ';
-  out[2] = 'O';
-  out[3] = 'K';
-  out[4] = '\0';
   // To be continued...
   switch (commandBuffer[0]) {
     case '?':
       Serial.println("> V: Display version info");
-      Serial.println("> K: MODE = keyer mode");
+      //Serial.println("> K: MODE = keyer mode");
       Serial.println("> S: MODE = straight key mode *");
       Serial.println("> Q: Display settings");
-      Serial.println("> W[5-40]: Set keyer speed between 5 and 40 WPM (*12)");
+      //Serial.println("> W[5-40]: Set keyer speed between 5 and 40 WPM (*12)");
       Serial.println("> D[30-3000]: Set keyer semi-break-in timeout in ms (*1000)");
-      Serial.println("> R: POLARITY = reverse paddle polarity");
-      Serial.println("> N: POLARITY = normal paddle polarity *");
+      //Serial.println("> R: POLARITY = reverse paddle polarity");
+      //Serial.println("> N: POLARITY = normal paddle polarity *");
       Serial.println("> !RESET!: Reset to all defaults");
       Serial.println("> !WIPE!: Erase EEPROM to empty");
       Serial.println("> !DUMP!: Display EEPROM contents");
       Serial.println("> (* indicates defaults)");
       break;
     case 'V':
-      strcpy(out + 2, "v0.0");
+      Serial.println("> v0.0");
       break;
     case 'K':
       Serial.println("> Keyer mode is currently unfinished; come back later....");
-      keyMode = PADDLE;
-      setKeyModeFunction();
-      saveConfig();
+//      Serial.println("> Keyer");
+//      keyMode = PADDLE;
+//      setKeyModeFunction();
+//      saveConfig();
       break;
     case 'S':
+      Serial.println("> Straight");
       keyMode = STRAIGHT_KEY;
       setKeyModeFunction();
       saveConfig();
@@ -520,42 +525,42 @@ void processCommand() {
       sprintf(out, "> %s mode", keyMode == STRAIGHT_KEY ? "Straight" : "Keyer");
       Serial.println(out);
       sprintf(out, "> Break-in timeout %d ms", keyBreakInMs);
-      // last line gets printed automatically..
+      Serial.println(out);
       break;
-    case 'W': // collect speed
-      break;
+//    case 'W': // collect speed
+//      break;
     case 'D': // collect break-in timeout in ms
       numericParameter = collectNumericParameter();
-      if (numericParameter == -1) {
-        return;
-      }
-      if (numericParameter >= 30 && numericParameter <= 3000) {
+      if (numericParameter != -1 && numericParameter >= 30 && numericParameter <= 3000) {
+        sprintf(out, "> Timeout %d ms", numericParameter);
+        Serial.println(out);
         keyBreakInMs = numericParameter;
         saveConfig();
       } else {
-        strcpy(out + 2, "D[30-3000] out of range");
+        Serial.println("> D[30-3000] out of range");
       }
       break;
-    case 'R':
-      break;
-    case 'N':
-      break;
+//    case 'R':
+//      break;
+//    case 'N':
+//      break;
     default:
       if (strcmp("!RESET!", commandBuffer) == 0) {
         resetToDefaults();
         saveConfig();
-        strcat(out, "> Reset.");
+        Serial.println("> Reset");
       } else if (strcmp("!WIPE!", commandBuffer) == 0) {
         wipe_eeprom();
-        strcat(out, "> Wiped.");
+        Serial.println("> Wiped");
       } else if (strcmp("!DUMP!", commandBuffer) == 0) {
         dump_eeprom();
       } else {
-        out[2] = '?';
-        out[3] = '\0';
+        Serial.println("> ???");
       }
       break;
   }
+
+  ok();
   Serial.println(out);
 }
 
